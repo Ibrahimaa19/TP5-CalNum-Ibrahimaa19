@@ -6,38 +6,34 @@
 #include "lib_poisson1D.h"
 #include <cblas.h>
 #include <math.h>
+#include <lapacke.h>
 
-void set_GB_operator_colMajor_poisson1D(double* AB, int *lab, int *la, int *kv){
-    int N = *la;
-    int KU = *kv;
-    int LDAB = *lab;
 
-    for(int j = 0; j < N; j++)
-        for(int i = 0; i < LDAB; i++)
-            AB[i + j*LDAB] = 0.0;
+void set_GB_operator_colMajor_poisson1D(double *AB, int *lab, int *la, int *ku)
+{
+  int i, j;
+  int kl = *ku;   /* tridiagonale */
 
-    for(int j = 0; j < N; j++)
-    {
-        AB[KU + 1 + j*LDAB] = 2.0;
-        if(j < N-1)
-            AB[KU+2 + j*LDAB] = -1.0;
-        if(j > 0)
-            AB[KU + j*LDAB] = -1.0;
-    }
+  /* Initialisation à zéro */
+  for (j = 0; j < *la; j++)
+    for (i = 0; i < *lab; i++)
+      AB[i + j*(*lab)] = 0.0;
+
+  for (j = 0; j < *la; j++) {
+
+    /* Diagonale */
+    AB[kl + (*ku) + j*(*lab)] = 2.0;
+
+    /* Sur-diagonale */
+    if (j < *la - 1)
+      AB[kl + (*ku) - 1 + j*(*lab)] = -1.0;
+
+    /* Sous-diagonale */
+    if (j > 0)
+      AB[kl + (*ku) + 1 + j*(*lab)] = -1.0;
+  }
 }
 
-void set_GB_operator_colMajor_poisson1D_Id(double* AB, int *lab, int *la, int *kv){
-    int N = *la;
-    int KU = *kv;
-    int LDAB = *lab;
-
-    for(int j = 0; j < N; j++)
-        for(int i = 0; i < LDAB; i++)
-            AB[i + j*LDAB] = 0.0;
-
-    for(int j = 0; j < N; j++)
-        AB[KU + 1 + j*LDAB] = 1.0;
-}
 
 void set_dense_RHS_DBC_1D(double* RHS, int* la, double* BC0, double* BC1){
     int N = *la;
@@ -118,3 +114,114 @@ int dgbtrftridiag(int *la, int*n, int *kl, int *ku, double *AB, int *lab, int *i
   
     return *info;
 }
+
+
+
+/* Exercice 5: Fonctions LAPACK               */
+
+int dgbsv_tridiag(int *n, int *kl, int *ku, double *AB, 
+                  int *lab, double *b, double *x, int *info) {
+    int nrhs = 1;
+    int* ipiv = (int*)malloc(*n * sizeof(int));
+    
+    // Copie b dans x (sera écrasé par la solution)
+    dcopy_(n, b, &(int){1}, x, &(int){1});
+    
+    // Appel à la fonction Fortran dgbsv
+    dgbsv_(n, kl, ku, &nrhs, AB, lab, ipiv, x, n, info);
+    
+    free(ipiv);
+    return *info;
+}
+
+double validate_tridiag_poisson1D(double *x, double *b, int *la)
+{
+    int N = *la;
+    double *Ax = (double *) malloc(N * sizeof(double));
+    double *r  = (double *) malloc(N * sizeof(double));
+
+    /* Calcul Ax */
+    for (int i = 0; i < N; i++) {
+        Ax[i] = 2.0 * x[i];
+        if (i > 0)     Ax[i] -= x[i-1];
+        if (i < N-1)   Ax[i] -= x[i+1];
+    }
+
+    /* r = b - Ax */
+    for (int i = 0; i < N; i++) {
+        r[i] = b[i] - Ax[i];
+    }
+
+    /* Normes */
+    double norm_r = cblas_dnrm2(N, r, 1);
+    double norm_b = cblas_dnrm2(N, b, 1);
+
+    free(Ax);
+    free(r);
+
+    if (norm_b < 1e-15) return norm_r;
+    return norm_r / norm_b;
+}
+
+
+
+/* Exercice 6: LU personnalisée  */
+
+void lu_tridiag_simple(double *AB, int *lab, int *la, int *kv,
+                       double *L, double *U, int *info)
+{
+    int N = *la;
+    int ku = *kv;
+    int kl = *kv;
+    int ldab = *lab;
+    int diag = kl + ku;
+
+    *info = 0;
+
+    // Init
+    for(int j = 0; j < N; j++)
+        for(int i = 0; i < ldab; i++)
+            L[i + j*ldab] = U[i + j*ldab] = 0.0;
+
+    for(int j = 0; j < N; j++) {
+        U[diag + j*ldab] = AB[diag + j*ldab];
+        L[diag + j*ldab] = 1.0;
+
+        if(j < N-1)
+            U[diag - 1 + (j+1)*ldab] = AB[diag - 1 + (j+1)*ldab];
+    }
+
+    for(int i = 0; i < N-1; i++) {
+        if (fabs(U[diag + i*ldab]) < 1e-14) {
+            *info = i+1;
+            return;
+        }
+
+        double l = AB[diag + 1 + i*ldab] / U[diag + i*ldab];
+        L[diag + 1 + i*ldab] = l;
+        U[diag + (i+1)*ldab] -= l * U[diag - 1 + (i+1)*ldab];
+    }
+}
+
+
+void solve_lu_tridiag(double *L, double *U, int *lab, int *la, int *kv,
+                      double *b, double *x, int *info)
+{
+    int N = *la;
+    int diag = (*kv) * 2;
+    int ldab = *lab;
+
+    double *y = malloc(N*sizeof(double));
+
+    y[0] = b[0];
+    for(int i = 1; i < N; i++)
+        y[i] = b[i] - L[diag + 1 + (i-1)*ldab] * y[i-1];
+
+    x[N-1] = y[N-1] / U[diag + (N-1)*ldab];
+    for(int i = N-2; i >= 0; i--)
+        x[i] = (y[i] - U[diag - 1 + (i+1)*ldab] * x[i+1])
+               / U[diag + i*ldab];
+
+    free(y);
+}
+*/

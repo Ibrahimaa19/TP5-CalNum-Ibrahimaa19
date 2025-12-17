@@ -106,7 +106,78 @@ int main(int argc,char *argv[])
 
   /* Alternative: solve directly using dgbsv */
   if (IMPLEM == SV) {
-    // TODO : use dgbsv
+    printf("\n EXERCICE 5: LAPACK DGBSV \n");
+    
+    double *AB_original = (double *) malloc(sizeof(double)*lab*la);
+    cblas_dcopy(lab*la, AB, 1, AB_original, 1);
+    
+    double *b_original = (double *) malloc(sizeof(double)*la);
+    cblas_dcopy(la, RHS, 1, b_original, 1);
+    
+    double *x_solution = (double *) malloc(sizeof(double)*la);
+    cblas_dcopy(la, RHS, 1, x_solution, 1);
+    
+    // Résoudre avec dgbsv
+    int info_dgbsv;
+    dgbsv_tridiag(&la, &kl, &ku, AB_original, &lab, b_original, x_solution, &info_dgbsv);
+    
+    printf("DGBSV info = %d\n", info_dgbsv);
+    
+    // Validation avec la matrice ORIGINALE et le b ORIGINAL
+    double residual = validate_tridiag_poisson1D(x_solution, b_original, &la);
+    printf("Résidu relatif (manuel): %e\n", residual);
+
+    
+    // Test manuel du premier élément
+    double test_ax = 0.0;
+    
+    // Copier la solution dans RHS pour compatibilité avec le reste du code
+    cblas_dcopy(la, x_solution, 1, RHS, 1);
+    
+    free(AB_original);
+    free(b_original);
+    free(x_solution);
+  }
+
+  /* EXERCICE 6: LU personnalisée               */
+  if (IMPLEM == TRI) {
+    printf("\n EXERCICE 6: LU personnalisée \n");
+    
+    double *AB_original = (double *) malloc(sizeof(double)*lab*la);
+    cblas_dcopy(lab*la, AB, 1, AB_original, 1);
+    double *b_original = (double *) malloc(sizeof(double)*la);
+    cblas_dcopy(la, RHS, 1, b_original, 1);
+    
+    // Allouer L et U
+    double *L = (double *) malloc(sizeof(double)*lab*la);
+    double *U = (double *) malloc(sizeof(double)*lab*la);
+    
+    // Factorisation LU 
+    int info_lu;
+    lu_tridiag_simple(AB_original, &lab, &la, &kv, L, U, &info_lu);
+    
+    if (info_lu == 0) {
+        printf("LU factorisation réussie\n");
+        
+        // Résolution
+        double *x_custom = (double *) malloc(sizeof(double)*la);
+        solve_lu_tridiag(L, U, &lab, &la, &kv, b_original, x_custom, &info_lu);
+        
+        // Validation
+        double residual_custom = validate_with_dgbmv(AB_original, &lab, &la, &kv, x_custom, b_original);
+        printf("Résidu relatif LU custom: %e\n", residual_custom);
+        
+        cblas_dcopy(la, x_custom, 1, RHS, 1);
+        
+        free(x_custom);
+    } else {
+        printf("ERREUR dans la factorisation LU: info = %d\n", info_lu);
+    }
+    
+    free(AB_original);
+    free(b_original);
+    free(L);
+    free(U);
   }
 
   /* Write results to files */

@@ -214,3 +214,15 @@ int indexABCol(int i, int j, int *lab);
  * @return info value
  */
 int dgbtrftridiag(int *la, int *n, int *kl, int *ku, double *AB, int *lab, int *ipiv, int *info);
+
+/* Exercice 5: Fonctions LAPACK pour matrices bandes */
+int dgbsv_tridiag(int *n, int *kl, int *ku, double *AB, 
+                  int *lab, double *b, double *x, int *info);
+double validate_with_dgbmv(double *AB, int *lab, int *la, int *kv,
+                           double *x, double *b);
+
+/* Exercice 6: LU personnalisée */
+void lu_tridiag_simple(double *AB, int *lab, int *la, int *ku,
+                       double *L, double *U, int *info);
+void solve_lu_tridiag(double *L, double *U, int *lab, int *la, int *ku,
+                      double *b, double *x, int *info);
