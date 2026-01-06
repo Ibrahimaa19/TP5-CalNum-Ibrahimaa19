@@ -5,6 +5,7 @@
 /* using direct methods (LU factorization)*/
 /******************************************/
 #include "lib_poisson1D.h"
+#include <time.h>
 
 #define TRF 0  /* Use LAPACK dgbtrf for LU factorization */
 #define TRI 1  /* Use custom tridiagonal LU factorization */
@@ -58,7 +59,6 @@ int main(int argc,char *argv[])
   X=(double *) malloc(sizeof(double)*la);        /* Grid points */
 
   /* Initialize the problem: grid, RHS, and exact solution */
-  // TODO : you have to implement those functions
   set_grid_points_1D(X, &la);                                /* Create uniform grid */
   set_dense_RHS_DBC_1D(RHS,&la,&T0,&T1);                     /* Set up RHS with BC */
   set_analytical_solution_DBC_1D(EX_SOL, X, &la, &T0, &T1);  /* Compute exact solution */
@@ -97,87 +97,21 @@ int main(int argc,char *argv[])
   if (IMPLEM == TRI || IMPLEM == TRF){
     /* Solution (Triangular) - solve using the LU factors */
     if (info==0){
-      dgbtrs_("N", &la, &kl, &ku, &NRHS, AB, &lab, ipiv, RHS, &la, &info);
-      if (info!=0){printf("\n INFO DGBTRS = %d\n",info);}
+      // CORRECTION : ajout de la longueur de la chaîne
+      int trans_len = 1;
+      dgbtrs_("N", &la, &kl, &ku, &NRHS, AB, &lab, ipiv, RHS, &la, &info, trans_len);
+      if (info!=0){printf("\n INFO DGBTRS = %d\n",info);}    
     }else{
       printf("\n INFO = %d\n",info);
     }
   }
 
-  /* Alternative: solve directly using dgbsv */
+  /* Alternative: solve directly using dgbsv (student completion) */
   if (IMPLEM == SV) {
-    printf("\n EXERCICE 5: LAPACK DGBSV \n");
-    
-    double *AB_original = (double *) malloc(sizeof(double)*lab*la);
-    cblas_dcopy(lab*la, AB, 1, AB_original, 1);
-    
-    double *b_original = (double *) malloc(sizeof(double)*la);
-    cblas_dcopy(la, RHS, 1, b_original, 1);
-    
-    double *x_solution = (double *) malloc(sizeof(double)*la);
-    cblas_dcopy(la, RHS, 1, x_solution, 1);
-    
-    // Résoudre avec dgbsv
-    int info_dgbsv;
-    dgbsv_tridiag(&la, &kl, &ku, AB_original, &lab, b_original, x_solution, &info_dgbsv);
-    
-    printf("DGBSV info = %d\n", info_dgbsv);
-    
-    // Validation avec la matrice ORIGINALE et le b ORIGINAL
-    double residual = validate_tridiag_poisson1D(x_solution, b_original, &la);
-    printf("Résidu relatif (manuel): %e\n", residual);
-
-    
-    // Test manuel du premier élément
-    double test_ax = 0.0;
-    
-    // Copier la solution dans RHS pour compatibilité avec le reste du code
-    cblas_dcopy(la, x_solution, 1, RHS, 1);
-    
-    free(AB_original);
-    free(b_original);
-    free(x_solution);
-  }
-
-  /* EXERCICE 6: LU personnalisée               */
-  if (IMPLEM == TRI) {
-    printf("\n EXERCICE 6: LU personnalisée \n");
-    
-    double *AB_original = (double *) malloc(sizeof(double)*lab*la);
-    cblas_dcopy(lab*la, AB, 1, AB_original, 1);
-    double *b_original = (double *) malloc(sizeof(double)*la);
-    cblas_dcopy(la, RHS, 1, b_original, 1);
-    
-    // Allouer L et U
-    double *L = (double *) malloc(sizeof(double)*lab*la);
-    double *U = (double *) malloc(sizeof(double)*lab*la);
-    
-    // Factorisation LU 
-    int info_lu;
-    lu_tridiag_simple(AB_original, &lab, &la, &kv, L, U, &info_lu);
-    
-    if (info_lu == 0) {
-        printf("LU factorisation réussie\n");
-        
-        // Résolution
-        double *x_custom = (double *) malloc(sizeof(double)*la);
-        solve_lu_tridiag(L, U, &lab, &la, &kv, b_original, x_custom, &info_lu);
-        
-        // Validation
-        double residual_custom = validate_with_dgbmv(AB_original, &lab, &la, &kv, x_custom, b_original);
-        printf("Résidu relatif LU custom: %e\n", residual_custom);
-        
-        cblas_dcopy(la, x_custom, 1, RHS, 1);
-        
-        free(x_custom);
-    } else {
-        printf("ERREUR dans la factorisation LU: info = %d\n", info_lu);
+    dgbsv_(&la, &kl, &ku, &NRHS, AB, &lab, ipiv, RHS, &la, &info);
+    if (info != 0) {
+      printf("\n INFO DGBSV = %d\n", info);
     }
-    
-    free(AB_original);
-    free(b_original);
-    free(L);
-    free(U);
   }
 
   /* Write results to files */
@@ -194,5 +128,8 @@ int main(int argc,char *argv[])
   free(EX_SOL);
   free(X);
   free(AB);
+  free(ipiv);
+
   printf("\n\n--------- End -----------\n");
+  return 0;
 }

@@ -44,11 +44,12 @@ OBJENV= tp_env.o
 OBJLIBPOISSON= lib_poisson1D$(SOL).o lib_poisson1D_writers.o lib_poisson1D_richardson$(SOL).o
 OBJTP2ITER= $(OBJLIBPOISSON) tp_poisson1D_iter.o
 OBJTP2DIRECT= $(OBJLIBPOISSON) tp_poisson1D_direct.o
+OBJPERF= test_performance.o
 #
 .PHONY: all
 
-all: bin/tp_testenv bin/tpPoisson1D_iter bin/tpPoisson1D_direct
-run: run_testenv run_tpPoisson1D_iter run_tpPoisson1D_direct
+all: bin/tp_testenv bin/tpPoisson1D_iter bin/tpPoisson1D_direct bin/test_perf
+run: run_testenv run_tpPoisson1D_iter run_tpPoisson1D_direct run_perf
 
 testenv: bin/tp_testenv
 
@@ -56,6 +57,9 @@ tpPoisson1D_iter: bin/tpPoisson1D_iter
 
 tpPoisson1D_direct: bin/tpPoisson1D_direct
 
+test_perf: bin/test_perf
+
+# REGLE GENERIQUE - garde celle-ci SEULEMENT
 %.o : $(TPDIRSRC)/%.c
 	$(CC) $(OPTC) -c $(INCL) $<
 
@@ -67,6 +71,9 @@ bin/tpPoisson1D_iter: $(OBJTP2ITER)
 
 bin/tpPoisson1D_direct: $(OBJTP2DIRECT)
 	$(CC) -o bin/tpPoisson1D_direct $(OPTC) $(OBJTP2DIRECT) $(LIBS)
+
+bin/test_perf: $(OBJLIBPOISSON) test_performance.o
+	$(CC) -o bin/test_perf $(OPTC) test_performance.o $(OBJLIBPOISSON) $(LIBS)
 
 run_testenv:
 	bin/tp_testenv
@@ -81,5 +88,11 @@ run_tpPoisson1D_direct:
 	bin/tpPoisson1D_direct 1
 	bin/tpPoisson1D_direct 2
 
+run_perf:
+	bin/test_perf
+
 clean:
-	rm *.o bin/*
+	rm -f *.o bin/* mesures_*.txt
+
+clean_perf:
+	rm -f test_performance.o bin/test_perf mesures_*.txt

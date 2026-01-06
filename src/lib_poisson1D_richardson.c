@@ -4,24 +4,38 @@
 /* Poisson problem (Heat equation)            */
 /**********************************************/
 #include "lib_poisson1D.h"
+#include <math.h>
 
-void eig_poisson1D(double* eigval, int *la){
-  // TODO: Compute all eigenvalues for the 1D Poisson operator
+void eig_poisson1D(double* eigval, int *la) {
+    int N = *la;
+    double h = 1.0 / (N + 1.0);
+    double factor = 2.0 / (h * h);
+    
+    for (int j = 1; j <= N; j++) {
+        // Valeurs propres: lambda_j = 2/h^2 * (1 - cos(j*π/(N+1)))
+        eigval[j-1] = factor * (1.0 - cos(j * M_PI / (N + 1.0)));
+    }
 }
 
-double eigmax_poisson1D(int *la){
-  // TODO: Compute and return the maximum eigenvalue for the 1D Poisson operator
-  return 0;
+double eigmax_poisson1D(int *la) {
+    int N = *la;
+    double h = 1.0 / (N + 1.0);
+    // Plus grande valeur propre: j = N
+    return (2.0 / (h * h)) * (1.0 - cos(N * M_PI / (N + 1.0)));
 }
 
-double eigmin_poisson1D(int *la){
-  // TODO: Compute and return the minimum eigenvalue for the 1D Poisson operator
-  return 0;
+double eigmin_poisson1D(int *la) {
+    int N = *la;
+    double h = 1.0 / (N + 1.0);
+    // Plus petite valeur propre: j = 1
+    return (2.0 / (h * h)) * (1.0 - cos(M_PI / (N + 1.0)));
 }
 
-double richardson_alpha_opt(int *la){
-  // TODO: Compute alpha_opt
-  return 0;
+double richardson_alpha_opt(int *la) {
+    double lmax = eigmax_poisson1D(la);
+    double lmin = eigmin_poisson1D(la);
+    // alpha optimal = 2 / (lambda_max + lambda_min)
+    return 2.0 / (lmax + lmin);
 }
 
 /**
@@ -35,6 +49,53 @@ void richardson_alpha(double *AB, double *RHS, double *X, double *alpha_rich, in
   // 2. Update x = x + alpha*r (use daxpy)
   // 3. Check convergence: ||r||_2 < tol (use dnrm2)
   // 4. Store residual norm in resvec and repeat
+  int i, iter;
+  double *r = (double *)malloc((*la) * sizeof(double));  // résidu
+  double *Ax = (double *)malloc((*la) * sizeof(double)); // A*x
+  double norm_r, norm_b;
+  char trans = 'N';
+  int nrhs = 1;
+  
+  // Initialisation de X à 0 si nécessaire
+  for (i = 0; i < *la; i++) {
+      X[i] = 0.0;
+  }
+  
+  // Calcul de la norme de b pour le critère relatif
+  norm_b = cblas_dnrm2(*la, RHS, 1);
+  if (norm_b < 1e-15) norm_b = 1.0;
+  
+  for (iter = 0; iter < *maxit; iter++) {
+      // 1. Calcul de r = b - A*x
+      // Ax = A*X
+      cblas_dgbmv(CblasColMajor, CblasNoTrans, *la, *la, *kl, *ku,
+                  1.0, AB, *lab, X, 1, 0.0, Ax, 1);
+      
+      // r = RHS - Ax
+      cblas_dcopy(*la, RHS, 1, r, 1);
+      cblas_daxpy(*la, -1.0, Ax, 1, r, 1);
+      
+      // 2. Norme du résidu
+      norm_r = cblas_dnrm2(*la, r, 1);
+      
+      // 3. Stockage de la norme du résidu
+      if (resvec != NULL) {
+          resvec[iter] = norm_r;
+      }
+      
+      // 4. Test de convergence
+      if (norm_r / norm_b < *tol) {
+          break;
+      }
+      
+      // 5. Mise à jour : X = X + alpha * r
+      cblas_daxpy(*la, *alpha_rich, r, 1, X, 1);
+  }
+  
+  *nbite = iter + 1;  // nombre d'itérations effectuées
+  
+  free(r);
+  free(Ax);
 }
 
 /**
@@ -44,6 +105,18 @@ void richardson_alpha(double *AB, double *RHS, double *X, double *alpha_rich, in
 void extract_MB_jacobi_tridiag(double *AB, double *MB, int *lab, int *la,int *ku, int*kl, int *kv){
   // TODO: Extract diagonal elements from AB and store in MB
   // MB should contain only the diagonal of A
+  int i;
+    
+  // Initialisation de MB à 0
+  for (i = 0; i < (*lab) * (*la); i++) {
+      MB[i] = 0.0;
+  }
+  
+  // Pour Jacobi: M = D (diagonale seulement)
+  // Dans le stockage GB: la diagonale est à la ligne kv (généralement 2 pour lab=4)
+  for (i = 0; i < *la; i++) {
+      MB[(*kv) + i * (*lab)] = AB[(*kv) + i * (*lab)];
+  }
 }
 
 /**
@@ -53,6 +126,23 @@ void extract_MB_jacobi_tridiag(double *AB, double *MB, int *lab, int *la,int *ku
 void extract_MB_gauss_seidel_tridiag(double *AB, double *MB, int *lab, int *la,int *ku, int*kl, int *kv){
   // TODO: Extract diagonal and lower diagonal from AB
   // MB should contain the lower triangular part (including diagonal) of A
+  int i;  
+  // Initialisation de MB à 0
+  for (i = 0; i < (*lab) * (*la); i++) {
+      MB[i] = 0.0;
+  }
+  
+  // Pour Gauss-Seidel: M = D - E (diagonale + sous-diagonale)
+  // Copie de la diagonale
+  for (i = 0; i < *la; i++) {
+      MB[(*kv) + i * (*lab)] = AB[(*kv) + i * (*lab)];
+  }
+  
+  // Copie de la sous-diagonale (E est la partie strictement inférieure)
+  // Sous-diagonale est à la ligne kv+1 (généralement 3 pour lab=4)
+  for (i = 0; i < *la - 1; i++) {
+      MB[(*kv + 1) + i * (*lab)] = AB[(*kv + 1) + i * (*lab)];
+  }  
 }
 
 /**
@@ -61,7 +151,80 @@ void extract_MB_gauss_seidel_tridiag(double *AB, double *MB, int *lab, int *la,i
  * where M is either D for Jacobi or (D-E) for Gauss-Seidel.
  * Stops when ||b - A*x^(k)||_2  / ||b||_2 < tol or when reaching maxit iterations.
  */
-void richardson_MB(double *AB, double *RHS, double *X, double *MB, int *lab, int *la,int *ku, int*kl, double *tol, int *maxit, double *resvec, int *nbite){
-  // TODO: Implement Richardson iterative method
+void richardson_MB(double *AB, double *RHS, double *X, double *MB, 
+                   int *lab, int *la, int *ku, int *kl, 
+                   double *tol, int *maxit, double *resvec, int *nbite) {
+    
+    int iter;
+    double *res = (double *)malloc((*la) * sizeof(double));
+    double *Ax = (double *)malloc((*la) * sizeof(double));
+    double norm_r, norm_b, rel_res;
+    
+    int kv_local = (*lab) - (*kl) - (*ku) - 1;
+    int diag_idx = kv_local + (*ku);
+    int sub_idx = diag_idx + 1;
+    
+    int use_gs = 0;
+    for (int i = 0; i < (*la) - 1; i++) {
+        if (fabs(MB[sub_idx + i * (*lab)]) > 1e-15) {
+            use_gs = 1;
+            break;
+        }
+    }
+    
+    for (int i = 0; i < *la; i++) {
+        X[i] = 0.0;
+    }
+    
+    norm_b = cblas_dnrm2(*la, RHS, 1);
+    if (norm_b < 1e-15) norm_b = 1.0;
+    
+    for (iter = 0; iter < *maxit; iter++) {
+        cblas_dgbmv(CblasColMajor, CblasNoTrans, *la, *la, *kl, *ku,
+                    1.0, AB, *lab, X, 1, 0.0, Ax, 1);
+        
+        cblas_dcopy(*la, RHS, 1, res, 1);
+        cblas_daxpy(*la, -1.0, Ax, 1, res, 1);
+        
+        norm_r = cblas_dnrm2(*la, res, 1);
+        rel_res = norm_r / norm_b;
+        
+        if (resvec != NULL) {
+            resvec[iter] = rel_res;
+        }
+        
+        if (rel_res < *tol) {
+            break;
+        }
+        
+        if (use_gs == 0) {
+            for (int i = 0; i < *la; i++) {
+                double d = MB[diag_idx + i * (*lab)];
+                if (fabs(d) > 1e-15) {
+                    res[i] /= d;
+                } else {
+                    res[i] = 0.0;
+                }
+            }
+        } else {
+            for (int i = 0; i < *la; i++) {
+                double sum = 0.0;
+                double d = MB[diag_idx + i * (*lab)];
+                
+                if (i > 0) {
+                    double s = MB[sub_idx + (i - 1) * (*lab)];
+                    sum += s * res[i - 1];
+                }
+                
+                res[i] = (res[i] - sum) / d;
+            }
+        }
+        
+        cblas_daxpy(*la, 1.0, res, 1, X, 1);
+    }
+    
+    *nbite = iter + 1;
+    
+    free(res);
+    free(Ax);
 }
-
