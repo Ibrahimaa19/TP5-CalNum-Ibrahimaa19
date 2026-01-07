@@ -56,7 +56,6 @@ void richardson_alpha(double *AB, double *RHS, double *X, double *alpha_rich, in
   char trans = 'N';
   int nrhs = 1;
   
-  // Initialisation de X à 0 si nécessaire
   for (i = 0; i < *la; i++) {
       X[i] = 0.0;
   }
@@ -66,7 +65,6 @@ void richardson_alpha(double *AB, double *RHS, double *X, double *alpha_rich, in
   if (norm_b < 1e-15) norm_b = 1.0;
   
   for (iter = 0; iter < *maxit; iter++) {
-      // 1. Calcul de r = b - A*x
       // Ax = A*X
       cblas_dgbmv(CblasColMajor, CblasNoTrans, *la, *la, *kl, *ku,
                   1.0, AB, *lab, X, 1, 0.0, Ax, 1);
@@ -75,24 +73,20 @@ void richardson_alpha(double *AB, double *RHS, double *X, double *alpha_rich, in
       cblas_dcopy(*la, RHS, 1, r, 1);
       cblas_daxpy(*la, -1.0, Ax, 1, r, 1);
       
-      // 2. Norme du résidu
       norm_r = cblas_dnrm2(*la, r, 1);
       
-      // 3. Stockage de la norme du résidu
       if (resvec != NULL) {
           resvec[iter] = norm_r;
       }
       
-      // 4. Test de convergence
       if (norm_r / norm_b < *tol) {
           break;
       }
       
-      // 5. Mise à jour : X = X + alpha * r
       cblas_daxpy(*la, *alpha_rich, r, 1, X, 1);
   }
   
-  *nbite = iter + 1;  // nombre d'itérations effectuées
+  *nbite = iter + 1;
   
   free(r);
   free(Ax);
@@ -107,13 +101,10 @@ void extract_MB_jacobi_tridiag(double *AB, double *MB, int *lab, int *la,int *ku
   // MB should contain only the diagonal of A
   int i;
     
-  // Initialisation de MB à 0
   for (i = 0; i < (*lab) * (*la); i++) {
       MB[i] = 0.0;
   }
   
-  // Pour Jacobi: M = D (diagonale seulement)
-  // Dans le stockage GB: la diagonale est à la ligne kv (généralement 2 pour lab=4)
   for (i = 0; i < *la; i++) {
       MB[(*kv) + i * (*lab)] = AB[(*kv) + i * (*lab)];
   }
@@ -127,19 +118,16 @@ void extract_MB_gauss_seidel_tridiag(double *AB, double *MB, int *lab, int *la,i
   // TODO: Extract diagonal and lower diagonal from AB
   // MB should contain the lower triangular part (including diagonal) of A
   int i;  
-  // Initialisation de MB à 0
+  
   for (i = 0; i < (*lab) * (*la); i++) {
       MB[i] = 0.0;
   }
   
-  // Pour Gauss-Seidel: M = D - E (diagonale + sous-diagonale)
-  // Copie de la diagonale
+  
   for (i = 0; i < *la; i++) {
       MB[(*kv) + i * (*lab)] = AB[(*kv) + i * (*lab)];
   }
   
-  // Copie de la sous-diagonale (E est la partie strictement inférieure)
-  // Sous-diagonale est à la ligne kv+1 (généralement 3 pour lab=4)
   for (i = 0; i < *la - 1; i++) {
       MB[(*kv + 1) + i * (*lab)] = AB[(*kv + 1) + i * (*lab)];
   }  
