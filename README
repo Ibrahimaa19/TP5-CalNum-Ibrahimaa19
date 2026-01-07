@@ -19,6 +19,7 @@ Here are the principal targets:
 testenv: bin/tp_testenv
 tp2poisson1D_direct: bin/tpPoisson1D_direct
 tp2poisson1D_iter: bin/tpPoisson1D_iter
+test_perf: bin/test_perf
 
 The command,
 $ make target
